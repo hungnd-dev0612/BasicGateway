@@ -14,13 +14,26 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vn.youmed.api.apis.studentApi.pattern.Facade;
 
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+
 public class APIGatewayVerticle extends AbstractVerticle {
     private final Logger LOGGER = LoggerFactory.getLogger(APIGatewayVerticle.class);
+    public static final NavigableMap<String, Integer> mapAddress = new TreeMap<>();
 
+    static {
+        mapAddress.put("worker1", 0);
+        mapAddress.put("worker2", 0);
+        mapAddress.put("worker3", 0);
+        mapAddress.put("worker4", 0);
+    }
 
     @Override
     public void start(Future<Void> startFuture) throws Exception {
-        Router router = new Facade(vertx).getStudentRouter().getRouter();
+//        Router router = new Facade(vertx).getStudentRouter().getRouter();
+        Router router = Router.router(vertx);
+        router.route("/*").handler(this::publishMessage);
         createHttpServer(router, startFuture);
     }
 
@@ -37,15 +50,31 @@ public class APIGatewayVerticle extends AbstractVerticle {
     }
 
     public void publishMessage(RoutingContext routingContext) {
-        vertx.eventBus().send("vn.youmed.api.student", "", msg -> {
-//routingContext.request().handler()
-
-        });
-        vertx.eventBus().send("vn.youmed.api.classes", "", mess -> {
-
-        });
-        vertx.eventBus().send("vn.youmed.api.specialities", "", mess -> {
-
+        String address = getAddress();
+        vertx.eventBus().send(address, "JsonObject", msg -> {
+            routingContext.request().response().end(address);
         });
     }
+
+    public String getAddress() {
+        String address = null;
+        String lastKey = null;
+        Map.Entry<String, Integer> lastEntry = mapAddress.lastEntry();
+        for (Map.Entry<String, Integer> entry : mapAddress.entrySet()) {
+            if (entry.getValue() == 0) {
+                address = entry.getKey();
+                entry.setValue(+1);
+                LOGGER.info("map over time{}", mapAddress);
+                if (entry.getKey().equals(lastEntry.getKey())) {
+                    lastKey = entry.getKey();
+                    address = lastKey;
+                    mapAddress.replaceAll((k, v) -> v = 0);
+                }
+                return address;
+            }
+        }
+        return address;
+    }
+
+
 }
