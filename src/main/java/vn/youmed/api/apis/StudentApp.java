@@ -5,6 +5,6 @@ import io.vertx.core.Vertx;
 public class StudentApp {
     public static void main(String[] args) {
         Vertx vertx = Vertx.vertx();
-        vertx.deployVerticle(new StudentVerticle());
+        vertx.deployVerticle(new StudentVerticle3());
     }
 }
