@@ -6,7 +6,7 @@ public class SomeContants {
     }
 
     public static final String CONTENT_TYPE = "content-type";
-    public static final String CONTENT_VALUE = "application/json ; charset=utf-8";
+    public static final String CONTENT_VALUE = "application/json";
     public static final String SPECIALITY_COLLECTION = "specialities";
     public static final String STUDENT_COLLECTION = "students";
     public static final String CLASS_COLLECTION = "classes";

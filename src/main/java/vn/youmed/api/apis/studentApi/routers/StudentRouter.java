@@ -1,6 +1,7 @@
 package vn.youmed.api.apis.studentApi.routers;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -26,7 +27,6 @@ public class StudentRouter {
 
     public Router getRouter() {
         Router router = Router.router(vertx);
-
         router.get("/students").handler(studentHandler::getAll);
         router.post("/students").handler(studentHandler::insert);
         router.put("/students/:id").handler(studentHandler::update);
@@ -49,7 +49,8 @@ public class StudentRouter {
     }
 
 
-
-
+    public StudentHandler getStudentHandler() {
+        return studentHandler;
+    }
 }
 
