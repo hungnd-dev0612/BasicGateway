@@ -4,93 +4,205 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.Json;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vn.youmed.api.apis.studentApi.constants.SomeContants;
-import vn.youmed.api.apis.studentApi.pattern.Facade;
-import vn.youmed.api.apis.studentApi.routers.handlers.StudentHandler;
 
+import vn.youmed.api.apis.gatewayDO.WorkerInfo;
+import vn.youmed.api.apis.studentApi.constants.SomeContants;
+
+import java.util.HashMap;
 import java.util.Map;
-import java.util.NavigableMap;
-import java.util.TreeMap;
+import java.util.Optional;
+import java.util.Set;
+
 
 public class APIGatewayVerticle extends AbstractVerticle {
-    private final Logger LOGGER = LoggerFactory.getLogger(APIGatewayVerticle.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(APIGatewayVerticle.class);
 
-    private static final NavigableMap<String, Integer> mapAddress = new TreeMap<>();
+    private static final Map<String, WorkerInfo> mapAddress = new HashMap<>();
 
-    static {
-        mapAddress.put("worker1", 0);
-        mapAddress.put("worker2", 0);
-        mapAddress.put("worker3", 0);
-    }
 
     @Override
     public void start(Future<Void> startFuture) throws Exception {
+        LOGGER.info("start Gateway ... ");
+        vertx.eventBus().consumer("gateway", handler -> {
+            LOGGER.info("gateway receive worker information:  {}", handler.body());
+            WorkerInfo workerInfo = JsonObject.mapFrom(handler.body()).mapTo(WorkerInfo.class);
+            LOGGER.info("{}", workerInfo);
+//            mapAddress.put(workerInfo.getWorker(), workerInfo.getNumberRequest());
+            mapAddress.put(workerInfo.getWorker(), workerInfo);
+            handler.reply(Json.encodePrettily(workerInfo));
+        });
         Router router = Router.router(vertx);
-        router.route("/*").handler(this::publishMessage);
+        router.route("/*").handler(this::dispatchRequest);
         createHttpServer(router, startFuture);
+
     }
 
     public void createHttpServer(Router router, Future<Void> startFuture) {
-        vertx.createHttpServer().requestHandler(router).listen(8080, event -> {
-            if (event.succeeded()) {
-                LOGGER.info("succeeded");
+        vertx.createHttpServer().requestHandler(router).listen(8080, result -> {
+            if (result.succeeded()) {
+                LOGGER.info("starting Gateway on port: {} is succeeded ", result.result().actualPort());
                 startFuture.complete();
             } else {
+                LOGGER.error("start fail {}", result.cause());
                 startFuture.complete();
             }
         });
         router.route();
     }
 
-    public void publishMessage(RoutingContext routingContext) {
+    public void dispatchRequest(RoutingContext routingContext) {
+        LOGGER.info("doDispatch uri = {}", routingContext.request().uri());
         HttpMethod httpMethod = routingContext.request().method();
         String pathParams = routingContext.request().path();
         String queryParams = routingContext.request().query();
-        Facade facade = new Facade(vertx);
-        StudentHandler studentHandler = facade.getStudentRouter().getStudentHandler();
 //        lay ra string sau slash dau tien
         String[] output = routingContext.request().uri().split("/");
         String api = output[1];
-        LOGGER.info("output {}", api);
-        LOGGER.info("method {}", httpMethod);
         JsonObject message = new JsonObject().put("api", api)
                 .put("method", httpMethod).put("params", pathParams).put("query", queryParams);
-        String address = getAddress();
-        LOGGER.warn(" address hereee {}", address);
-        vertx.eventBus().send(address, message, msg -> {
-            routingContext.request()
+        Optional<WorkerInfo> optional = getNext();
+        if (optional.isPresent()) {
+            WorkerInfo next = optional.get();
+            LOGGER.info("chosen worker :{}", next.getWorker());
+            vertx.eventBus().send(next.getWorker(), message, replyHandler -> {
+                LOGGER.info("sending message...");
+                if (replyHandler.succeeded()) {
+                    routingContext
+                            .request()
+                            .response()
+                            .putHeader(SomeContants.CONTENT_TYPE, SomeContants.CONTENT_VALUE)
+                            .end(Json.encodePrettily(Json.decodeValue(replyHandler.result().body().toString())));
+                    LOGGER.info("replyHandler succeeded");
+                } else {
+                    routingContext
+                            .request()
+                            .response()
+                            .putHeader(SomeContants.CONTENT_TYPE, SomeContants.CONTENT_VALUE)
+                            .end(Json.encodePrettily(replyHandler.cause()));
+                    LOGGER.error("replyHandler failed");
+                    LOGGER.error("replyHandler cause {}", replyHandler.cause());
+                }
+            });
+            updateRequestedWorker(next);
+        } else {
+            routingContext
+                    .request()
                     .response()
                     .putHeader(SomeContants.CONTENT_TYPE, SomeContants.CONTENT_VALUE)
-                    .end(Json.encodePrettily(Json.decodeValue(msg.result().body().toString())));
-        });
-
-
-    }
-
-    private String getAddress() {
-        String lastKey = mapAddress.lastKey();
-        String address = null;
-
-        for (Map.Entry<String, Integer> entry : mapAddress.entrySet()) {
-            if (entry.getValue() == 0) {
-                address = entry.getKey();
-                int countRequest = entry.getValue();
-                entry.setValue(countRequest + 1);
-                if (lastKey.equals(entry.getKey())) {
-                    String temporary = lastKey;
-                    mapAddress.replaceAll((k, v) -> v = 0);
-                    address = temporary;
-                }
-                return address;
-            }
+                    .setStatusCode(503).end("Service not available");
 
         }
-        return address;
+    }
+    private void updateRequestedWorker(WorkerInfo requested) {
+        requested.setCurrentRequest(requested.getCurrentRequest() + 1);
+        requested.setRequested(true);
+        LOGGER.debug(" {} currentRequest {}", requested.getWorker(), requested.getCurrentRequest());
+        mapAddress.put(requested.getWorker(), requested);
+    }
+
+//    private String getAddress() {
+//        String lastKey = mapAddress.lastKey();
+//        String address = null;
+//        for (Map.Entry<String, Integer> entry : mapAddress.entrySet()) {
+//            if (entry.getValue() == 0) {
+//                address = entry.getKey();
+//                int countRequest = entry.getValue();
+//                entry.setValue(countRequest + 1);
+//                if (lastKey.equals(entry.getKey())) {
+//                    String temporary = lastKey;
+//                    mapAddress.replaceAll((k, v) -> v = 0);
+//                    address = temporary;
+//                }
+//                return address;
+//            }
+//        }
+//        return address;
+//    }
+
+//    public void checkRequestOfEachWorker(String key) {
+//        int countRequest = mapAddress.get(key) - 1;
+//        LOGGER.info("count request {}", countRequest);
+//        mapAddress.put(key, countRequest);
+//        LOGGER.info("mapAddress {}", mapAddress);
+//        if (countRequest <= 0) {
+//            LOGGER.error("this server is overload");
+//        }
+//    }
+
+    //    public String getNextAddress() {
+//
+//    }
+    public Optional<WorkerInfo> getNext() {
+//        lay ra cac entry set (unique)
+        Set<Map.Entry<String, WorkerInfo>> entries = mapAddress.entrySet();
+        if (entries.isEmpty()) {
+            LOGGER.warn("worker not available");
+            return Optional.empty();
+        }
+//        loop cai set
+        WorkerInfo next = null;
+        for (Map.Entry<String, WorkerInfo> entry : entries) {
+            WorkerInfo workerInfo = entry.getValue();
+            if (!workerInfo.isRequested() && workerInfo.getCurrentRequest() < workerInfo.getNumberRequest()) {
+                next = workerInfo;
+            }
+        }
+        if (next == null) {
+            tryToRefreshAddressMap();
+            return getNext();
+        } else {
+            return Optional.of(next);
+        }
+
+//        return mapAddress.entrySet().stream().filter(entry -> {
+//            WorkerInfo workerInfo = entry.getValue();
+//            return !workerInfo.isRequested() && workerInfo.getCurrentRequest() < workerInfo.getNumberRequest();
+//        }).findAny().map(Map.Entry::getValue).orElse(null);
+//        optional.map(Map.Entry::getValue).orElse(null);
+    }
+
+    private void tryToRefreshAddressMap() {
+        if (allOfWorkerFullRequest()) {
+            LOGGER.debug("all of worker request receive is full, try to reset all worker");
+            resetAllWorkers();
+        } else {
+            makeRequestAble();
+        }
+    }
+
+    private void makeRequestAble() {
+        Set<Map.Entry<String, WorkerInfo>> entries = mapAddress.entrySet();
+        for (Map.Entry<String, WorkerInfo> entry : entries) {
+            WorkerInfo workerInfo = entry.getValue();
+            if (workerInfo.getCurrentRequest() < workerInfo.getNumberRequest()) {
+                LOGGER.debug("make {} request able", workerInfo.getWorker());
+                workerInfo.setRequested(false);
+            }
+        }
+    }
+
+    private void resetAllWorkers() {
+        Set<Map.Entry<String, WorkerInfo>> entries = mapAddress.entrySet();
+        for (Map.Entry<String, WorkerInfo> entry : entries) {
+            WorkerInfo workerInfo = entry.getValue();
+            workerInfo.setCurrentRequest(0);
+            workerInfo.setRequested(false);
+        }
+    }
+
+    private boolean allOfWorkerFullRequest() {
+        Set<Map.Entry<String, WorkerInfo>> entries = mapAddress.entrySet();
+        int full = 0;
+        for (Map.Entry<String, WorkerInfo> entry : entries) {
+            if (entry.getValue().getCurrentRequest() == entry.getValue().getNumberRequest()) {
+                full++;
+            }
+        }
+        return full == entries.size();
     }
 }
