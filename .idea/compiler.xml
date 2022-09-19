@@ -9,6 +9,7 @@
         <outputRelativeToContentRoot value="true" />
         <module name="Student-api" />
         <module name="worker" />
+        <module name="Student-api (1)" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>

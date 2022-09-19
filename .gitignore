@@ -13,6 +13,7 @@
 
 # sbteclipse plugin
 .target
+.t
 
 # Tern plugin
 .tern-project
@@ -92,3 +93,5 @@ buildNumber.properties
 
 /.idea/sonarlint/
 /.idea/
+/.target/
+/target/*
