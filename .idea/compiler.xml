@@ -7,10 +7,12 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="Student-api" />
         <module name="worker" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="Student-api" target="1.8" />
       <module name="Student-api (1)" target="1.8" />
       <module name="Student-api (2)" target="1.8" />
       <module name="worker" target="1.8" />
