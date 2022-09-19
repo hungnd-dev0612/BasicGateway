@@ -32,7 +32,6 @@ public class APIGatewayVerticle extends AbstractVerticle {
             LOGGER.info("gateway receive worker information:  {}", handler.body());
             WorkerInfo workerInfo = JsonObject.mapFrom(handler.body()).mapTo(WorkerInfo.class);
             LOGGER.info("{}", workerInfo);
-//            mapAddress.put(workerInfo.getWorker(), workerInfo.getNumberRequest());
             mapAddress.put(workerInfo.getWorker(), workerInfo);
             handler.reply(Json.encodePrettily(workerInfo));
         });
@@ -98,6 +97,7 @@ public class APIGatewayVerticle extends AbstractVerticle {
 
         }
     }
+
     private void updateRequestedWorker(WorkerInfo requested) {
         requested.setCurrentRequest(requested.getCurrentRequest() + 1);
         requested.setRequested(true);
@@ -105,51 +105,22 @@ public class APIGatewayVerticle extends AbstractVerticle {
         mapAddress.put(requested.getWorker(), requested);
     }
 
-//    private String getAddress() {
-//        String lastKey = mapAddress.lastKey();
-//        String address = null;
-//        for (Map.Entry<String, Integer> entry : mapAddress.entrySet()) {
-//            if (entry.getValue() == 0) {
-//                address = entry.getKey();
-//                int countRequest = entry.getValue();
-//                entry.setValue(countRequest + 1);
-//                if (lastKey.equals(entry.getKey())) {
-//                    String temporary = lastKey;
-//                    mapAddress.replaceAll((k, v) -> v = 0);
-//                    address = temporary;
-//                }
-//                return address;
-//            }
-//        }
-//        return address;
-//    }
-
-//    public void checkRequestOfEachWorker(String key) {
-//        int countRequest = mapAddress.get(key) - 1;
-//        LOGGER.info("count request {}", countRequest);
-//        mapAddress.put(key, countRequest);
-//        LOGGER.info("mapAddress {}", mapAddress);
-//        if (countRequest <= 0) {
-//            LOGGER.error("this server is overload");
-//        }
-//    }
-
-    //    public String getNextAddress() {
-//
-//    }
     public Optional<WorkerInfo> getNext() {
 //        lay ra cac entry set (unique)
         Set<Map.Entry<String, WorkerInfo>> entries = mapAddress.entrySet();
+        LOGGER.info("map {}", mapAddress);
         if (entries.isEmpty()) {
             LOGGER.warn("worker not available");
             return Optional.empty();
         }
 //        loop cai set
         WorkerInfo next = null;
+
         for (Map.Entry<String, WorkerInfo> entry : entries) {
             WorkerInfo workerInfo = entry.getValue();
             if (!workerInfo.isRequested() && workerInfo.getCurrentRequest() < workerInfo.getNumberRequest()) {
                 next = workerInfo;
+                return Optional.of(next);
             }
         }
         if (next == null) {
@@ -159,7 +130,7 @@ public class APIGatewayVerticle extends AbstractVerticle {
             return Optional.of(next);
         }
 
-//        return mapAddress.entrySet().stream().filter(entry -> {
+  //        return mapAddress.entrySet().stream().filter(entry -> {
 //            WorkerInfo workerInfo = entry.getValue();
 //            return !workerInfo.isRequested() && workerInfo.getCurrentRequest() < workerInfo.getNumberRequest();
 //        }).findAny().map(Map.Entry::getValue).orElse(null);
@@ -168,7 +139,7 @@ public class APIGatewayVerticle extends AbstractVerticle {
 
     private void tryToRefreshAddressMap() {
         if (allOfWorkerFullRequest()) {
-            LOGGER.debug("all of worker request receive is full, try to reset all worker");
+            LOGGER.warn("all of worker request receive is full, try to reset all worker");
             resetAllWorkers();
         } else {
             makeRequestAble();
@@ -180,7 +151,7 @@ public class APIGatewayVerticle extends AbstractVerticle {
         for (Map.Entry<String, WorkerInfo> entry : entries) {
             WorkerInfo workerInfo = entry.getValue();
             if (workerInfo.getCurrentRequest() < workerInfo.getNumberRequest()) {
-                LOGGER.debug("make {} request able", workerInfo.getWorker());
+                LOGGER.warn("make {} request able", workerInfo.getWorker());
                 workerInfo.setRequested(false);
             }
         }
@@ -198,11 +169,14 @@ public class APIGatewayVerticle extends AbstractVerticle {
     private boolean allOfWorkerFullRequest() {
         Set<Map.Entry<String, WorkerInfo>> entries = mapAddress.entrySet();
         int full = 0;
+        String workerName = null;
         for (Map.Entry<String, WorkerInfo> entry : entries) {
             if (entry.getValue().getCurrentRequest() == entry.getValue().getNumberRequest()) {
+                workerName = entry.getValue().getWorker();
                 full++;
             }
         }
+        LOGGER.warn("{} is full request", workerName);
         return full == entries.size();
     }
 }
